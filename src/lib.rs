@@ -85,7 +85,7 @@ pub enum PluginEvent {
 
 // Host Imports
 #[link(wasm_import_module = "env")]
-extern "C" {
+unsafe extern "C" {
     fn print(ptr: *const u8, len: u32);
     fn host_kv_set(k_ptr: *const u8, k_len: u32, v_ptr: *const u8, v_len: u32);
     fn host_kv_read(k_ptr: *const u8, k_len: u32, buf_ptr: *mut u8, buf_len: u32) -> u32;
