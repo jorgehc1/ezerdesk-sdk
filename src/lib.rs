@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 pub use ezerdesk_sdk_macros::main;
 
+pub mod query;
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PluginResponse {
     pub success: bool,
@@ -288,6 +290,7 @@ mod host {
         pub fn host_kv_set(k_ptr: *const u8, k_len: u32, v_ptr: *const u8, v_len: u32);
         pub fn host_kv_read(k_ptr: *const u8, k_len: u32, buf_ptr: *mut u8, buf_len: u32) -> u32;
         pub fn host_http_request(req_ptr: *const u8, req_len: u32, res_ptr: *mut u8, res_len: u32) -> u32;
+        pub fn host_query(req_ptr: *const u8, req_len: u32, res_ptr: *mut u8, res_len: u32) -> u32;
     }
 }
 
@@ -297,6 +300,7 @@ mod host {
     pub unsafe fn host_kv_set(_k_ptr: *const u8, _k_len: u32, _v_ptr: *const u8, _v_len: u32) {}
     pub unsafe fn host_kv_read(_k_ptr: *const u8, _k_len: u32, _buf_ptr: *mut u8, _buf_len: u32) -> u32 { 0 }
     pub unsafe fn host_http_request(_req_ptr: *const u8, _req_len: u32, _res_ptr: *mut u8, _res_len: u32) -> u32 { 0 }
+    pub unsafe fn host_query(_req_ptr: *const u8, _req_len: u32, _res_ptr: *mut u8, _res_len: u32) -> u32 { 0 }
 }
 
 use host::*;
@@ -333,6 +337,24 @@ pub fn http_request(req: &HttpRequest) -> Option<HttpResponse> {
     serde_json::from_str(&res_json).ok()
 }
 
+pub fn query_data(query_json: &str) -> Option<String> {
+    let mut buf = [0u8; 65536];
+    let actual_len = unsafe {
+        host_query(query_json.as_ptr(), query_json.len() as u32, buf.as_mut_ptr(), buf.len() as u32)
+    } as usize;
+
+    if actual_len == 0 {
+        return None;
+    }
+
+    if actual_len > buf.len() {
+        log(&format!("[SDK] query_data: response too large ({} bytes, max {})", actual_len, buf.len()));
+        return None;
+    }
+
+    Some(String::from_utf8_lossy(&buf[0..actual_len]).to_string())
+}
+
 pub fn kv_set_val(key: &str, value: &str) {
     unsafe { host_kv_set(key.as_ptr(), key.len() as u32, value.as_ptr(), value.len() as u32) };
 }
@@ -365,6 +387,199 @@ pub fn to_host_response<T: Serialize>(response: &T) {
         Ok(json) => log(&json),
         Err(e) => log(&format!("[SDK] Error serializing response: {}", e)),
     }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  UI WIDGET FACTORY FUNCTIONS
+//  ══════════════════════════════════════════════════════════════════════════
+//  Uso: sdk::card("Título", [sdk::text("texto", "info")])
+//       sdk::button("Click", "accion", "primary")
+//       sdk::input("Email", "email", "tu@email.com")
+//  ══════════════════════════════════════════════════════════════════════════
+
+pub fn card(title: &str, children: Vec<UiWidget>) -> UiWidget {
+    UiWidget::Card { title: title.to_string(), children, colspan: None }
+}
+
+pub fn text(content: &str, style: &str) -> UiWidget {
+    UiWidget::Text { content: content.to_string(), style: style.to_string() }
+}
+
+pub fn button(label: &str, action: &str, variant: &str) -> UiWidget {
+    UiWidget::Button { label: label.to_string(), action: action.to_string(), variant: variant.to_string() }
+}
+
+pub fn input(label: &str, name: &str, placeholder: &str) -> UiWidget {
+    UiWidget::Input { label: label.to_string(), name: name.to_string(), placeholder: placeholder.to_string(), value: String::new() }
+}
+
+pub fn textarea(label: &str, name: &str, placeholder: &str) -> UiWidget {
+    UiWidget::Textarea { label: label.to_string(), name: name.to_string(), placeholder: placeholder.to_string(), value: String::new() }
+}
+
+pub fn select_widget(label: &str, name: &str, options: Vec<(&str, &str)>, value: &str) -> UiWidget {
+    UiWidget::Select {
+        label: label.to_string(),
+        name: name.to_string(),
+        options: options.into_iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+        value: value.to_string(),
+    }
+}
+
+pub fn switch_widget(label: &str, name: &str, value: bool) -> UiWidget {
+    UiWidget::Switch { label: label.to_string(), name: name.to_string(), value }
+}
+
+pub fn badge(content: &str, variant: &str) -> UiWidget {
+    UiWidget::Badge { content: content.to_string(), variant: variant.to_string() }
+}
+
+pub fn icon(name: &str, color: &str) -> UiWidget {
+    UiWidget::Icon { name: name.to_string(), color: color.to_string() }
+}
+
+pub fn divider() -> UiWidget {
+    UiWidget::Divider
+}
+
+pub fn modal(title: &str, children: Vec<UiWidget>, size: &str, close_action: &str) -> UiWidget {
+    UiWidget::Modal {
+        title: title.to_string(),
+        children,
+        size: size.to_string(),
+        close_action: close_action.to_string(),
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  NAVITEM BUILDER
+//  ══════════════════════════════════════════════════════════════════════════
+//  Uso: NavItem::new("dashboard", "Mi Plugin", "rocket-line")
+//         .category("operaciones")
+//         .priority(10)
+//  ══════════════════════════════════════════════════════════════════════════
+
+impl NavItem {
+    pub fn new(page_id: &str, label: &str, icon: &str) -> Self {
+        Self {
+            page_id: page_id.to_string(),
+            label: label.to_string(),
+            icon: icon.to_string(),
+            category: String::new(),
+            priority: 0,
+        }
+    }
+
+    pub fn category(mut self, cat: &str) -> Self {
+        self.category = cat.to_string();
+        self
+    }
+
+    pub fn priority(mut self, prio: i32) -> Self {
+        self.priority = prio;
+        self
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  PLUGIN METADATA BUILDER
+//  ══════════════════════════════════════════════════════════════════════════
+//  Uso: sdk::metadata()
+//         .nav_item(NavItem::new(...))
+//         .name("Mi Plugin")
+//         .version("1.0.0")
+//         .author("RFJ Software")
+//  ══════════════════════════════════════════════════════════════════════════
+
+impl PluginMetadata {
+    pub fn new() -> Self {
+        Self {
+            host: "ezerdesk".to_string(),
+            navigation: vec![],
+            name: None,
+            description: None,
+            version: None,
+            author: None,
+        }
+    }
+
+    pub fn nav_item(mut self, item: NavItem) -> Self {
+        self.navigation.push(item);
+        self
+    }
+
+    pub fn name(mut self, name: &str) -> Self {
+        self.name = Some(name.to_string());
+        self
+    }
+
+    pub fn description(mut self, desc: &str) -> Self {
+        self.description = Some(desc.to_string());
+        self
+    }
+
+    pub fn version(mut self, ver: &str) -> Self {
+        self.version = Some(ver.to_string());
+        self
+    }
+
+    pub fn author(mut self, author: &str) -> Self {
+        self.author = Some(author.to_string());
+        self
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  RESPONSE HELPERS
+//  ══════════════════════════════════════════════════════════════════════════
+//  sdk::respond(widgets)       → envía UI al host
+//  sdk::respond_ok("msg")      → envía ActionResponse exitoso
+//  sdk::respond_error("msg")   → envía ActionResponse con error
+//  ══════════════════════════════════════════════════════════════════════════
+
+pub fn respond(widgets: Vec<UiWidget>) {
+    to_host_response(&PluginResponse { success: true, ui_widgets: widgets })
+}
+
+pub fn respond_ok(message: &str) {
+    to_host_response(&ActionResponse { success: true, response: message.to_string() })
+}
+
+pub fn respond_error(message: &str) {
+    to_host_response(&ActionResponse { success: false, response: message.to_string() })
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  WIDGETS MACRO
+//  ══════════════════════════════════════════════════════════════════════════
+//  sdk::respond(sdk::widgets![
+//      sdk::card("Título", [sdk::text("Hola", "info")]),
+//  ]);
+//  ══════════════════════════════════════════════════════════════════════════
+
+#[macro_export]
+macro_rules! widgets {
+    ($($widget:expr),* $(,)?) => {
+        vec![$($widget),*]
+    };
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  PRELUDE
+//  ══════════════════════════════════════════════════════════════════════════
+//  use sdk::prelude::*;
+//  ══════════════════════════════════════════════════════════════════════════
+
+pub mod prelude {
+    pub use super::{
+        ActionResponse, NavItem, PluginEvent, PluginMetadata, PluginResponse, UiWidget,
+    };
+    pub use super::{
+        badge, button, card, divider, icon, input, modal, respond, respond_error, respond_ok,
+        select_widget, switch_widget, text, textarea,
+    };
+    pub use super::{http_request, kv_get_val, kv_set_val, log, query_data, to_host_response};
+    pub use super::query::{self, TicketSummary, AgentSummary, DepartmentSummary};
 }
 
 // Memory management helpers (Internal)
