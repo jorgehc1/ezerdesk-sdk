@@ -3,25 +3,37 @@ pub use ezerdesk_sdk_macros::main;
 
 pub mod query;
 
+/// Respuesta del plugin al host, que puede incluir widgets de UI.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PluginResponse {
+    /// Indica si la operación fue exitosa.
     pub success: bool,
+    /// Widgets de UI a renderizar en el frontend.
     #[serde(default)]
     pub ui_widgets: Vec<UiWidget>,
 }
 
+/// Respuesta de acción simple (éxito/error con mensaje).
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ActionResponse {
+    /// Indica si la operación fue exitosa.
     pub success: bool,
+    /// Mensaje de respuesta.
     pub response: String,
 }
 
+/// Elemento de navegación del plugin en el panel lateral.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct NavItem {
+    /// Identificador único de la página.
     pub page_id: String,
+    /// Etiqueta visible en el menú.
     pub label: String,
+    /// Nombre del ícono (ej: "rocket-line").
     pub icon: String,
+    /// Categoría de navegación para agrupar items.
     pub category: String,
+    /// Prioridad de ordenamiento (menor = más arriba).
     pub priority: i32,
 }
 
@@ -44,6 +56,10 @@ pub struct PluginMetadata {
     pub author: Option<String>,
 }
 
+/// Representa un widget de interfaz de usuario renderizable en el frontend.
+///
+/// Cada variante se serializa con el tag `"tipo"` para que el frontend
+/// pueda interpretar el tipo de widget dinámicamente.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "tipo", content = "data")]
 pub enum UiWidget {
@@ -81,6 +97,7 @@ pub enum UiWidget {
     },
 }
 
+/// Representa un ticket del sistema de helpdesk.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Ticket {
     pub id: String,
@@ -97,6 +114,7 @@ pub struct Ticket {
     pub nueva_prioridad: Option<String>,
 }
 
+/// Comentario asociado a un ticket.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Comment {
     pub id: String,
@@ -106,6 +124,7 @@ pub struct Comment {
     pub cuerpo: String,
 }
 
+/// Mensaje de chat en una sesión de soporte en vivo.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ChatMessage {
     pub id: String,
@@ -113,10 +132,12 @@ pub struct ChatMessage {
     pub id_organizacion: String,
     pub remitente: String,
     pub contenido: String,
-    pub metadatos: String, // JSON string as per backend codec
+    /// Metadatos adicionales en formato JSON (según codec del backend).
+    pub metadatos: String,
     pub creado_en: i64,
 }
 
+/// Sesión de chat de soporte en vivo.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ChatSession {
     pub id_sesion: String,
@@ -130,6 +151,9 @@ pub struct ChatSession {
     pub actualizado_at: i64,
 }
 
+/// Evento entrante del host hacia el plugin.
+///
+/// Se discrimina por el campo `event_type` en el JSON.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "event_type")]
 pub enum PluginEvent {
@@ -267,17 +291,25 @@ pub enum PluginEvent {
     Other,
 }
 
+/// Petición HTTP para enviar al backend a través del host.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct HttpRequest {
+    /// Método HTTP (GET, POST, PUT, DELETE, etc.).
     pub method: String,
+    /// URL completa del destino.
     pub url: String,
+    /// Cuerpo de la petición.
     pub body: String,
+    /// Cabeceras HTTP como pares (nombre, valor).
     pub headers: Vec<(String, String)>,
 }
 
+/// Respuesta HTTP recibida del backend.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct HttpResponse {
+    /// Código de estado HTTP.
     pub status: u16,
+    /// Cuerpo de la respuesta.
     pub body: String,
 }
 
@@ -305,83 +337,168 @@ mod host {
 
 use host::*;
 
+const INITIAL_BUF_SIZE: usize = 65536;
+const KV_BUF_SIZE: usize = 16384;
+const MAX_RETRIES: u32 = 5;
+
+/// Envía un mensaje de log al host del plugin.
 pub fn log(msg: &str) {
     unsafe { host_publish_response(msg.as_ptr(), msg.len() as u32) };
 }
 
+/// Realiza una petición HTTP al backend a través del host.
+///
+/// Usa un buffer dinámico con reintento automático si la respuesta no cabe.
 pub fn http_request(req: &HttpRequest) -> Option<HttpResponse> {
     let json = match serde_json::to_string(req) {
         Ok(j) => j,
-        Err(_) => return None,
+        Err(e) => {
+            log(&format!("[SDK] http_request: failed to serialize request: {}", e));
+            return None;
+        }
     };
-    let mut buf = [0u8; 65536]; // Buffer para la respuesta (64KB)
 
-    let actual_len = unsafe {
-        host_http_request(json.as_ptr(), json.len() as u32, buf.as_mut_ptr(), buf.len() as u32)
-    } as usize;
+    let mut buf_size = INITIAL_BUF_SIZE;
+    for _ in 0..MAX_RETRIES {
+        let mut buf = vec![0u8; buf_size];
+        let written = unsafe {
+            host_http_request(
+                json.as_ptr(),
+                json.len() as u32,
+                buf.as_mut_ptr(),
+                buf.len() as u32,
+            )
+        } as usize;
 
-    if actual_len == 0 {
-        return None;
+        if written == 0 {
+            log("[SDK] http_request: host returned empty response");
+            return None;
+        }
+
+        if written > buf.len() {
+            buf_size = written;
+            continue;
+        }
+
+        if written == buf.len() {
+            log(&format!(
+                "[SDK] http_request: response may have been truncated (filled {}/{} buffer)",
+                written, buf_size
+            ));
+        }
+
+        return match serde_json::from_slice(&buf[..written]) {
+            Ok(res) => Some(res),
+            Err(e) => {
+                log(&format!("[SDK] http_request: failed to deserialize response: {}", e));
+                None
+            }
+        };
     }
 
-    if actual_len > buf.len() {
-        log(&format!(
-            "[SDK] http_request: response too large ({} bytes, max {})",
-            actual_len,
-            buf.len()
-        ));
-        return None;
-    }
-
-    let res_json = String::from_utf8_lossy(&buf[0..actual_len]).to_string();
-    serde_json::from_str(&res_json).ok()
+    log(&format!(
+        "[SDK] http_request: exceeded max retries ({}) for buffer allocation",
+        MAX_RETRIES
+    ));
+    None
 }
 
+/// Ejecuta una consulta de datos contra el host mediante un JSON de query.
+///
+/// Usa un buffer dinámico con reintento automático si la respuesta no cabe.
 pub fn query_data(query_json: &str) -> Option<String> {
-    let mut buf = [0u8; 65536];
-    let actual_len = unsafe {
-        host_query(query_json.as_ptr(), query_json.len() as u32, buf.as_mut_ptr(), buf.len() as u32)
-    } as usize;
+    let mut buf_size = INITIAL_BUF_SIZE;
+    for _ in 0..MAX_RETRIES {
+        let mut buf = vec![0u8; buf_size];
+        let written = unsafe {
+            host_query(
+                query_json.as_ptr(),
+                query_json.len() as u32,
+                buf.as_mut_ptr(),
+                buf.len() as u32,
+            )
+        } as usize;
 
-    if actual_len == 0 {
-        return None;
+        if written == 0 {
+            log("[SDK] query_data: host returned empty response");
+            return None;
+        }
+
+        if written > buf.len() {
+            buf_size = written;
+            continue;
+        }
+
+        if written == buf.len() {
+            log(&format!(
+                "[SDK] query_data: response may have been truncated (filled {}/{} buffer)",
+                written, buf_size
+            ));
+        }
+
+        return Some(
+            String::from_utf8_lossy(&buf[..written]).into_owned()
+        );
     }
 
-    if actual_len > buf.len() {
-        log(&format!("[SDK] query_data: response too large ({} bytes, max {})", actual_len, buf.len()));
-        return None;
-    }
-
-    Some(String::from_utf8_lossy(&buf[0..actual_len]).to_string())
+    log(&format!(
+        "[SDK] query_data: exceeded max retries ({}) for buffer allocation",
+        MAX_RETRIES
+    ));
+    None
 }
 
+/// Almacena un valor en el key-value store del host.
 pub fn kv_set_val(key: &str, value: &str) {
     unsafe { host_kv_set(key.as_ptr(), key.len() as u32, value.as_ptr(), value.len() as u32) };
 }
 
+/// Lee un valor del key-value store del host.
+///
+/// Usa un buffer dinámico con reintento automático si el valor no cabe.
 pub fn kv_get_val(key: &str) -> Option<String> {
-    let mut buf = [0u8; 16384]; // Buffer para lectura (16KB)
-    let actual_len = unsafe {
-        host_kv_read(key.as_ptr(), key.len() as u32, buf.as_mut_ptr(), buf.len() as u32)
-    } as usize;
+    let mut buf_size = KV_BUF_SIZE;
+    for _ in 0..MAX_RETRIES {
+        let mut buf = vec![0u8; buf_size];
+        let written = unsafe {
+            host_kv_read(
+                key.as_ptr(),
+                key.len() as u32,
+                buf.as_mut_ptr(),
+                buf.len() as u32,
+            )
+        } as usize;
 
-    if actual_len == 0 {
-        return None;
+        if written == 0 {
+            log(&format!("[SDK] kv_get_val: no value found for key '{}'", key));
+            return None;
+        }
+
+        if written > buf.len() {
+            buf_size = written;
+            continue;
+        }
+
+        if written == buf.len() {
+            log(&format!(
+                "[SDK] kv_get_val: value for key '{}' may have been truncated (filled {}/{} buffer)",
+                key, written, buf_size
+            ));
+        }
+
+        return Some(
+            String::from_utf8_lossy(&buf[..written]).into_owned()
+        );
     }
 
-    if actual_len > buf.len() {
-        log(&format!(
-            "[SDK] kv_get_val: value too large for key '{}' ({} bytes, max {})",
-            key,
-            actual_len,
-            buf.len()
-        ));
-        return None;
-    }
-
-    Some(String::from_utf8_lossy(&buf[0..actual_len]).to_string())
+    log(&format!(
+        "[SDK] kv_get_val: exceeded max retries ({}) for key '{}'",
+        MAX_RETRIES, key
+    ));
+    None
 }
 
+/// Serializa una respuesta y la envía al host.
 pub fn to_host_response<T: Serialize>(response: &T) {
     match serde_json::to_string(response) {
         Ok(json) => log(&json),
@@ -397,26 +514,32 @@ pub fn to_host_response<T: Serialize>(response: &T) {
 //       sdk::input("Email", "email", "tu@email.com")
 //  ══════════════════════════════════════════════════════════════════════════
 
+/// Crea un widget `Card` que puede contener hijos.
 pub fn card(title: &str, children: Vec<UiWidget>) -> UiWidget {
     UiWidget::Card { title: title.to_string(), children, colspan: None }
 }
 
+/// Crea un widget `Text` con contenido y estilo.
 pub fn text(content: &str, style: &str) -> UiWidget {
     UiWidget::Text { content: content.to_string(), style: style.to_string() }
 }
 
+/// Crea un widget `Button` con etiqueta, acción y variante visual.
 pub fn button(label: &str, action: &str, variant: &str) -> UiWidget {
     UiWidget::Button { label: label.to_string(), action: action.to_string(), variant: variant.to_string() }
 }
 
+/// Crea un widget `Input` de texto.
 pub fn input(label: &str, name: &str, placeholder: &str) -> UiWidget {
     UiWidget::Input { label: label.to_string(), name: name.to_string(), placeholder: placeholder.to_string(), value: String::new() }
 }
 
+/// Crea un widget `Textarea` multilínea.
 pub fn textarea(label: &str, name: &str, placeholder: &str) -> UiWidget {
     UiWidget::Textarea { label: label.to_string(), name: name.to_string(), placeholder: placeholder.to_string(), value: String::new() }
 }
 
+/// Crea un widget `Select` (desplegable) con opciones.
 pub fn select_widget(label: &str, name: &str, options: Vec<(&str, &str)>, value: &str) -> UiWidget {
     UiWidget::Select {
         label: label.to_string(),
@@ -426,22 +549,27 @@ pub fn select_widget(label: &str, name: &str, options: Vec<(&str, &str)>, value:
     }
 }
 
+/// Crea un widget `Switch` (toggle) booleano.
 pub fn switch_widget(label: &str, name: &str, value: bool) -> UiWidget {
     UiWidget::Switch { label: label.to_string(), name: name.to_string(), value }
 }
 
+/// Crea un widget `Badge` con contenido y variante visual.
 pub fn badge(content: &str, variant: &str) -> UiWidget {
     UiWidget::Badge { content: content.to_string(), variant: variant.to_string() }
 }
 
+/// Crea un widget `Icon` con nombre y color.
 pub fn icon(name: &str, color: &str) -> UiWidget {
     UiWidget::Icon { name: name.to_string(), color: color.to_string() }
 }
 
+/// Crea un widget `Divider` (línea separadora).
 pub fn divider() -> UiWidget {
     UiWidget::Divider
 }
 
+/// Crea un widget `Modal` con título, hijos, tamaño y acción de cierre.
 pub fn modal(title: &str, children: Vec<UiWidget>, size: &str, close_action: &str) -> UiWidget {
     UiWidget::Modal {
         title: title.to_string(),
@@ -460,6 +588,7 @@ pub fn modal(title: &str, children: Vec<UiWidget>, size: &str, close_action: &st
 //  ══════════════════════════════════════════════════════════════════════════
 
 impl NavItem {
+    /// Crea un nuevo `NavItem` con los campos obligatorios.
     pub fn new(page_id: &str, label: &str, icon: &str) -> Self {
         Self {
             page_id: page_id.to_string(),
@@ -470,11 +599,13 @@ impl NavItem {
         }
     }
 
+    /// Asigna la categoría de navegación.
     pub fn category(mut self, cat: &str) -> Self {
         self.category = cat.to_string();
         self
     }
 
+    /// Asigna la prioridad de ordenamiento.
     pub fn priority(mut self, prio: i32) -> Self {
         self.priority = prio;
         self
@@ -491,7 +622,14 @@ impl NavItem {
 //         .author("RFJ Software")
 //  ══════════════════════════════════════════════════════════════════════════
 
+impl Default for PluginMetadata {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PluginMetadata {
+    /// Crea un nuevo `PluginMetadata` con valores por defecto.
     pub fn new() -> Self {
         Self {
             host: "ezerdesk".to_string(),
@@ -503,26 +641,31 @@ impl PluginMetadata {
         }
     }
 
+    /// Agrega un elemento de navegación.
     pub fn nav_item(mut self, item: NavItem) -> Self {
         self.navigation.push(item);
         self
     }
 
+    /// Asigna el nombre del plugin.
     pub fn name(mut self, name: &str) -> Self {
         self.name = Some(name.to_string());
         self
     }
 
+    /// Asigna la descripción del plugin.
     pub fn description(mut self, desc: &str) -> Self {
         self.description = Some(desc.to_string());
         self
     }
 
+    /// Asigna la versión semántica del plugin.
     pub fn version(mut self, ver: &str) -> Self {
         self.version = Some(ver.to_string());
         self
     }
 
+    /// Asigna el autor del plugin.
     pub fn author(mut self, author: &str) -> Self {
         self.author = Some(author.to_string());
         self
@@ -537,14 +680,17 @@ impl PluginMetadata {
 //  sdk::respond_error("msg")   → envía ActionResponse con error
 //  ══════════════════════════════════════════════════════════════════════════
 
+/// Envía una respuesta con widgets de UI al host.
 pub fn respond(widgets: Vec<UiWidget>) {
     to_host_response(&PluginResponse { success: true, ui_widgets: widgets })
 }
 
+/// Envía una respuesta de éxito simple al host.
 pub fn respond_ok(message: &str) {
     to_host_response(&ActionResponse { success: true, response: message.to_string() })
 }
 
+/// Envía una respuesta de error simple al host.
 pub fn respond_error(message: &str) {
     to_host_response(&ActionResponse { success: false, response: message.to_string() })
 }
@@ -557,6 +703,14 @@ pub fn respond_error(message: &str) {
 //  ]);
 //  ══════════════════════════════════════════════════════════════════════════
 
+/// Macro para construir un `Vec<UiWidget>` de forma concisa.
+///
+/// # Ejemplo
+/// ```ignore
+/// sdk::respond(sdk::widgets![
+///     sdk::card("Título", vec![sdk::text("Hola", "info")]),
+/// ]);
+/// ```
 #[macro_export]
 macro_rules! widgets {
     ($($widget:expr),* $(,)?) => {
@@ -582,7 +736,10 @@ pub mod prelude {
     pub use super::query::{self, TicketSummary, AgentSummary, DepartmentSummary};
 }
 
-// Memory management helpers (Internal)
+/// Asigna memoria en el heap de WASM y devuelve un puntero.
+///
+/// Usado internamente por la macro `#[sdk::main]` para la ABI de
+/// `alloc`/`deallocate` con el host.
 pub fn allocate(size: usize) -> *mut u8 {
     let actual = if size == 0 { 1 } else { size };
     let mut buf = Vec::with_capacity(actual);
@@ -591,10 +748,13 @@ pub fn allocate(size: usize) -> *mut u8 {
     ptr
 }
 
-pub fn deallocate(ptr: *mut u8, size: usize) {
-    unsafe {
-        let _ = Vec::from_raw_parts(ptr, 0, size);
-    }
+/// Libera memoria previamente asignada con [`allocate`].
+///
+/// # Safety
+/// `ptr` debe ser un puntero válido devuelto por [`allocate`] y `size` debe
+/// coincidir con el tamaño solicitado originalmente.
+pub unsafe fn deallocate(ptr: *mut u8, size: usize) {
+    unsafe { let _ = Vec::from_raw_parts(ptr, 0, size); }
 }
 
 #[cfg(test)]
@@ -790,7 +950,7 @@ mod tests {
     fn test_allocate_zero_returns_non_null() {
         let ptr = allocate(0);
         assert!(!ptr.is_null());
-        deallocate(ptr, 1);
+        unsafe { deallocate(ptr, 1) };
     }
 
     #[test]
@@ -799,8 +959,8 @@ mod tests {
         assert!(!ptr.is_null());
         unsafe {
             std::ptr::write_bytes(ptr, 0xAB, 64);
+            deallocate(ptr, 64);
         }
-        deallocate(ptr, 64);
     }
 
     // ── HttpRequest / HttpResponse ────────────────────────────────────────────

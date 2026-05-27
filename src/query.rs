@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 // ══════════════════════════════════════════════════════════════════════════
 //  TIPOS DE RESPUESTA
@@ -84,12 +84,43 @@ pub fn departments() -> SimpleQuery<DepartmentSummary> {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+//  PAYLOAD STRUCTS (serialización segura mediante serde)
+//  ══════════════════════════════════════════════════════════════════════════
+
+#[derive(Serialize)]
+struct TicketQueryPayload {
+    #[serde(rename = "type")]
+    query_type: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    filters: Option<TicketFilters>,
+}
+
+#[derive(Serialize)]
+struct TicketFilters {
+    status: String,
+}
+
+#[derive(Serialize)]
+struct SimpleQueryPayload {
+    #[serde(rename = "type")]
+    query_type: String,
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 //  TICKET QUERY (con filtros)
 //  ══════════════════════════════════════════════════════════════════════════
 
 pub struct TicketQuery {
     limit: Option<u32>,
     status: Option<String>,
+}
+
+impl Default for TicketQuery {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TicketQuery {
@@ -114,13 +145,18 @@ impl TicketQuery {
 
     /// Ejecutar la consulta y obtener resultados
     pub fn all(&self) -> Result<Vec<TicketSummary>, QueryError> {
-        let mut body = r#"{"type":"tickets""#.to_string();
+        let payload = TicketQueryPayload {
+            query_type: "tickets",
+            limit: self.limit,
+            filters: self.status.as_ref().map(|s| TicketFilters { status: s.clone() }),
+        };
 
-        if let Some(ref s) = self.status {
-            body.push_str(&format!(",\"filters\":{{\"status\":\"{}\"}}", s));
-        }
-
-        body.push_str("}");
+        let body = match serde_json::to_string(&payload) {
+            Ok(j) => j,
+            Err(e) => {
+                return Err(QueryError::Parse(format!("Error serializing query: {}", e)));
+            }
+        };
 
         match crate::query_data(&body) {
             Some(json) => parse_response::<TicketSummary>(&json),
@@ -151,7 +187,16 @@ impl<T> SimpleQuery<T> {
     where
         T: for<'a> Deserialize<'a>,
     {
-        let body = format!("{{\"type\":\"{}\"}}", self.query_type);
+        let payload = SimpleQueryPayload {
+            query_type: self.query_type.clone(),
+        };
+
+        let body = match serde_json::to_string(&payload) {
+            Ok(j) => j,
+            Err(e) => {
+                return Err(QueryError::Parse(format!("Error serializing query: {}", e)));
+            }
+        };
 
         match crate::query_data(&body) {
             Some(json) => parse_response::<T>(&json),
