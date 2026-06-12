@@ -108,6 +108,23 @@ pub enum UiWidget {
         data: Vec<(String, f64)>,
         chart_type: String,
     },
+    #[serde(rename = "number_input")]
+    NumberInput {
+        label: String,
+        name: String,
+        placeholder: String,
+        value: String,
+        min: Option<f64>,
+        max: Option<f64>,
+        step: Option<f64>,
+    },
+    #[serde(rename = "date_input")]
+    DateInput {
+        label: String,
+        name: String,
+        placeholder: String,
+        value: String,
+    },
 }
 
 /// Representa un ticket del sistema de helpdesk.
@@ -717,6 +734,50 @@ pub fn chart(title: &str, data: Vec<(&str, f64)>, chart_type: &str) -> UiWidget 
     }
 }
 
+/// Crea un widget `NumberInput` para entrada de números con validación.
+pub fn number_input(label: &str, name: &str, placeholder: &str, value: &str) -> UiWidget {
+    UiWidget::NumberInput {
+        label: label.to_string(),
+        name: name.to_string(),
+        placeholder: placeholder.to_string(),
+        value: value.to_string(),
+        min: None,
+        max: None,
+        step: None,
+    }
+}
+
+/// Crea un widget `NumberInput` con límites min/max/step.
+pub fn number_input_with_limits(
+    label: &str,
+    name: &str,
+    placeholder: &str,
+    value: &str,
+    min: f64,
+    max: f64,
+    step: f64,
+) -> UiWidget {
+    UiWidget::NumberInput {
+        label: label.to_string(),
+        name: name.to_string(),
+        placeholder: placeholder.to_string(),
+        value: value.to_string(),
+        min: Some(min),
+        max: Some(max),
+        step: Some(step),
+    }
+}
+
+/// Crea un widget `DateInput` para entrada de fechas.
+pub fn date_input(label: &str, name: &str, placeholder: &str, value: &str) -> UiWidget {
+    UiWidget::DateInput {
+        label: label.to_string(),
+        name: name.to_string(),
+        placeholder: placeholder.to_string(),
+        value: value.to_string(),
+    }
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 //  NAVITEM BUILDER
 //  ══════════════════════════════════════════════════════════════════════════
@@ -867,8 +928,9 @@ pub mod prelude {
         ActionResponse, NavItem, PluginEvent, PluginMetadata, PluginResponse, UiWidget,
     };
     pub use super::{
-        badge, button, card, divider, icon, input, modal, respond, respond_error, respond_ok,
-        select_widget, switch_widget, table, table_with_caption, text, textarea,
+        badge, button, card, chart, date_input, divider, icon, input, modal, number_input,
+        number_input_with_limits, respond, respond_error, respond_ok, select_widget,
+        switch_widget, table, table_with_caption, text, textarea,
     };
     pub use super::{http_request, kv_get_val, kv_set_val, kv_set_val_checked, log, oauth_start, oauth_callback, query_data, to_host_response};
     pub use super::query::{self, TicketSummary, AgentSummary, DepartmentSummary, 
