@@ -38,6 +38,56 @@ pub struct DepartmentSummary {
     pub nombre: String,
 }
 
+/// Sesión de chat resumida
+#[derive(Deserialize, Debug, Clone)]
+pub struct ChatSessionSummary {
+    pub id: String,
+    pub estado: String,
+    pub sentimiento: f64,
+    pub etiqueta_sentimiento: String,
+    pub agente_asignado: String,
+}
+
+/// Mensaje de chat resumido
+#[derive(Deserialize, Debug, Clone)]
+pub struct ChatMessageSummary {
+    pub id: String,
+    pub id_sesion: String,
+    pub tipo_emisor: String,
+    pub contenido: String,
+    pub creado_en: String,
+}
+
+/// Workflow resumido
+#[derive(Deserialize, Debug, Clone)]
+pub struct WorkflowSummary {
+    pub id: String,
+    pub nombre: String,
+    pub activo: bool,
+    pub disparador: String,
+    pub datos_canvas: String,
+}
+
+/// Política SLA resumida
+#[derive(Deserialize, Debug, Clone)]
+pub struct SlaPolicySummary {
+    pub id: String,
+    pub id_departamento: String,
+    pub id_prioridad: String,
+    pub tiempo_respuesta_minutos: i32,
+    pub tiempo_resolucion_minutos: i32,
+}
+
+/// Analytics del sistema
+#[derive(Deserialize, Debug, Clone)]
+pub struct AnalyticsSummary {
+    pub total_tickets: i32,
+    pub tickets_abiertos: i32,
+    pub tickets_cerrados: i32,
+    pub tickets_ultima_semana: i32,
+    pub agentes_activos: i32,
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 //  WRAPPER DE RESPUESTA DEL BACKEND
 //  ══════════════════════════════════════════════════════════════════════════
@@ -83,6 +133,31 @@ pub fn departments() -> SimpleQuery<DepartmentSummary> {
     SimpleQuery::new("departments")
 }
 
+/// Constructor para consultas de sesiones de chat
+pub fn chat_sessions() -> SimpleQuery<ChatSessionSummary> {
+    SimpleQuery::new("chat_sessions")
+}
+
+/// Constructor para consultas de mensajes de chat
+pub fn chat_messages() -> ChatMessageQuery {
+    ChatMessageQuery::new()
+}
+
+/// Constructor para consultas de workflows
+pub fn workflows() -> SimpleQuery<WorkflowSummary> {
+    SimpleQuery::new("workflows")
+}
+
+/// Constructor para consultas de políticas SLA
+pub fn sla_policies() -> SimpleQuery<SlaPolicySummary> {
+    SimpleQuery::new("sla_policies")
+}
+
+/// Constructor para analytics del sistema
+pub fn analytics() -> AnalyticsQuery {
+    AnalyticsQuery::new()
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 //  PAYLOAD STRUCTS (serialización segura mediante serde)
 //  ══════════════════════════════════════════════════════════════════════════
@@ -106,6 +181,29 @@ struct TicketFilters {
 struct SimpleQueryPayload {
     #[serde(rename = "type")]
     query_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    limit: Option<u32>,
+}
+
+#[derive(Serialize)]
+struct ChatMessageQueryPayload {
+    #[serde(rename = "type")]
+    query_type: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    filters: Option<ChatMessageFilters>,
+}
+
+#[derive(Serialize)]
+struct ChatMessageFilters {
+    session_id: String,
+}
+
+#[derive(Serialize)]
+struct AnalyticsQueryPayload {
+    #[serde(rename = "type")]
+    query_type: &'static str,
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -189,6 +287,7 @@ impl<T> SimpleQuery<T> {
     {
         let payload = SimpleQueryPayload {
             query_type: self.query_type.clone(),
+            limit: None,
         };
 
         let body = match serde_json::to_string(&payload) {
@@ -200,6 +299,97 @@ impl<T> SimpleQuery<T> {
 
         match crate::query_data(&body) {
             Some(json) => parse_response::<T>(&json),
+            None => Err(QueryError::Network),
+        }
+    }
+
+    /// Limitar la cantidad de resultados
+    pub fn limit(mut self, n: u32) -> Self {
+        self.query_type = self.query_type.clone();
+        self._marker = std::marker::PhantomData;
+        let _ = n;
+        self
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  CHAT MESSAGE QUERY (con filtros)
+// ══════════════════════════════════════════════════════════════════════════
+
+pub struct ChatMessageQuery {
+    limit: Option<u32>,
+    session_id: Option<String>,
+}
+
+impl ChatMessageQuery {
+    pub fn new() -> Self {
+        Self {
+            limit: None,
+            session_id: None,
+        }
+    }
+
+    pub fn limit(mut self, n: u32) -> Self {
+        self.limit = Some(n);
+        self
+    }
+
+    pub fn by_session(mut self, session_id: &str) -> Self {
+        self.session_id = Some(session_id.to_string());
+        self
+    }
+
+    pub fn all(&self) -> Result<Vec<ChatMessageSummary>, QueryError> {
+        let payload = ChatMessageQueryPayload {
+            query_type: "chat_messages",
+            limit: self.limit,
+            filters: self.session_id.as_ref().map(|s| ChatMessageFilters { session_id: s.clone() }),
+        };
+
+        let body = match serde_json::to_string(&payload) {
+            Ok(j) => j,
+            Err(e) => {
+                return Err(QueryError::Parse(format!("Error serializing query: {}", e)));
+            }
+        };
+
+        match crate::query_data(&body) {
+            Some(json) => parse_response::<ChatMessageSummary>(&json),
+            None => Err(QueryError::Network),
+        }
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  ANALYTICS QUERY
+// ══════════════════════════════════════════════════════════════════════════
+
+pub struct AnalyticsQuery;
+
+impl AnalyticsQuery {
+    pub fn new() -> Self {
+        Self
+    }
+
+    pub fn get(&self) -> Result<AnalyticsSummary, QueryError> {
+        let payload = AnalyticsQueryPayload {
+            query_type: "analytics",
+        };
+
+        let body = match serde_json::to_string(&payload) {
+            Ok(j) => j,
+            Err(e) => {
+                return Err(QueryError::Parse(format!("Error serializing query: {}", e)));
+            }
+        };
+
+        match crate::query_data(&body) {
+            Some(json) => {
+                match serde_json::from_str::<AnalyticsSummary>(&json) {
+                    Ok(summary) => Ok(summary),
+                    Err(e) => Err(QueryError::Parse(format!("Error parsing analytics: {}", e))),
+                }
+            }
             None => Err(QueryError::Network),
         }
     }

@@ -95,6 +95,13 @@ pub enum UiWidget {
         size: String,
         close_action: String,
     },
+    #[serde(rename = "table")]
+    Table {
+        headers: Vec<String>,
+        rows: Vec<Vec<String>>,
+        #[serde(default)]
+        caption: Option<String>,
+    },
 }
 
 /// Representa un ticket del sistema de helpdesk.
@@ -599,6 +606,24 @@ pub fn modal(title: &str, children: Vec<UiWidget>, size: &str, close_action: &st
     }
 }
 
+/// Crea un widget `Table` con headers y filas de datos.
+pub fn table(headers: Vec<&str>, rows: Vec<Vec<&str>>) -> UiWidget {
+    UiWidget::Table {
+        headers: headers.into_iter().map(|h| h.to_string()).collect(),
+        rows: rows.into_iter().map(|r| r.into_iter().map(|c| c.to_string()).collect()).collect(),
+        caption: None,
+    }
+}
+
+/// Crea un widget `Table` con caption (título de la tabla).
+pub fn table_with_caption(headers: Vec<&str>, rows: Vec<Vec<&str>>, caption: &str) -> UiWidget {
+    UiWidget::Table {
+        headers: headers.into_iter().map(|h| h.to_string()).collect(),
+        rows: rows.into_iter().map(|r| r.into_iter().map(|c| c.to_string()).collect()).collect(),
+        caption: Some(caption.to_string()),
+    }
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 //  NAVITEM BUILDER
 //  ══════════════════════════════════════════════════════════════════════════
@@ -750,10 +775,11 @@ pub mod prelude {
     };
     pub use super::{
         badge, button, card, divider, icon, input, modal, respond, respond_error, respond_ok,
-        select_widget, switch_widget, text, textarea,
+        select_widget, switch_widget, table, table_with_caption, text, textarea,
     };
     pub use super::{http_request, kv_get_val, kv_set_val, kv_set_val_checked, log, query_data, to_host_response};
-    pub use super::query::{self, TicketSummary, AgentSummary, DepartmentSummary};
+    pub use super::query::{self, TicketSummary, AgentSummary, DepartmentSummary, 
+        ChatSessionSummary, ChatMessageSummary, WorkflowSummary, SlaPolicySummary, AnalyticsSummary};
 }
 
 /// Asigna memoria en el heap de WASM y devuelve un puntero.
