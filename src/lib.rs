@@ -518,9 +518,10 @@ pub fn kv_get_val(key: &str) -> Option<String> {
 }
 
 /// Serializa una respuesta y la envía al host.
+/// IMPORTANTE: Usa host_publish_response (no host_log) para que el backend lea la respuesta.
 pub fn to_host_response<T: Serialize>(response: &T) {
     match serde_json::to_string(response) {
-        Ok(json) => log(&json),
+        Ok(json) => unsafe { host_publish_response(json.as_ptr(), json.len() as u32) },
         Err(e) => log(&format!("[SDK] Error serializing response: {}", e)),
     }
 }
