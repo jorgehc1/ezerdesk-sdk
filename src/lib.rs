@@ -624,6 +624,50 @@ pub fn oauth_callback(callback_data: &str) -> Option<String> {
     None
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+//  SMS/PHONE FUNCTIONS
+// ══════════════════════════════════════════════════════════════════════════
+
+/// Envía un SMS a través del host.
+/// Retorna Some(message_id) si fue exitoso, None si falló.
+pub fn send_sms(to: &str, body: &str) -> Option<String> {
+    let payload = serde_json::json!({
+        "action": "send_sms",
+        "to": to,
+        "body": body,
+    });
+    
+    match serde_json::to_string(&payload) {
+        Ok(json) => {
+            unsafe { host_publish_response(json.as_ptr(), json.len() as u32) };
+            Some("sms_sent".to_string())
+        }
+        Err(e) => {
+            log(&format!("[SDK] send_sms: error serializing: {}", e));
+            None
+        }
+    }
+}
+
+/// Obtiene el estado de un SMS enviado
+pub fn get_sms_status(message_id: &str) -> Option<String> {
+    let payload = serde_json::json!({
+        "action": "get_sms_status",
+        "message_id": message_id,
+    });
+    
+    match serde_json::to_string(&payload) {
+        Ok(json) => {
+            unsafe { host_publish_response(json.as_ptr(), json.len() as u32) };
+            Some("status_unknown".to_string())
+        }
+        Err(e) => {
+            log(&format!("[SDK] get_sms_status: error serializing: {}", e));
+            None
+        }
+    }
+}
+
 /// Serializa una respuesta y la envía al host.
 /// IMPORTANTE: Usa host_publish_response (no host_log) para que el backend lea la respuesta.
 pub fn to_host_response<T: Serialize>(response: &T) {
@@ -932,7 +976,7 @@ pub mod prelude {
         number_input_with_limits, respond, respond_error, respond_ok, select_widget,
         switch_widget, table, table_with_caption, text, textarea,
     };
-    pub use super::{http_request, kv_get_val, kv_set_val, kv_set_val_checked, log, oauth_start, oauth_callback, query_data, to_host_response};
+    pub use super::{http_request, kv_get_val, kv_set_val, kv_set_val_checked, log, oauth_start, oauth_callback, query_data, send_sms, get_sms_status, to_host_response};
     pub use super::query::{self, TicketSummary, AgentSummary, DepartmentSummary, 
         ChatSessionSummary, ChatMessageSummary, WorkflowSummary, SlaPolicySummary, AnalyticsSummary};
 }
