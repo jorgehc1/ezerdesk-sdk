@@ -21,7 +21,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-ezerdesk-sdk = "0.1.4"
+ezerdesk-sdk = "0.1.3"
 serde = { version = "1.0", features = ["derive"] }
 ```
 

@@ -319,6 +319,7 @@ mod host {
     #[link(wasm_import_module = "env")]
     unsafe extern "C" {
         pub fn host_publish_response(ptr: *const u8, len: u32);
+        pub fn host_log(ptr: *const u8, len: u32);
         pub fn host_kv_set(k_ptr: *const u8, k_len: u32, v_ptr: *const u8, v_len: u32);
         pub fn host_kv_read(k_ptr: *const u8, k_len: u32, buf_ptr: *mut u8, buf_len: u32) -> u32;
         pub fn host_http_request(req_ptr: *const u8, req_len: u32, res_ptr: *mut u8, res_len: u32) -> u32;
@@ -329,6 +330,7 @@ mod host {
 #[cfg(not(target_arch = "wasm32"))]
 mod host {
     pub unsafe fn host_publish_response(_ptr: *const u8, _len: u32) {}
+    pub unsafe fn host_log(_ptr: *const u8, _len: u32) {}
     pub unsafe fn host_kv_set(_k_ptr: *const u8, _k_len: u32, _v_ptr: *const u8, _v_len: u32) {}
     pub unsafe fn host_kv_read(_k_ptr: *const u8, _k_len: u32, _buf_ptr: *mut u8, _buf_len: u32) -> u32 { 0 }
     pub unsafe fn host_http_request(_req_ptr: *const u8, _req_len: u32, _res_ptr: *mut u8, _res_len: u32) -> u32 { 0 }
@@ -342,8 +344,9 @@ const KV_BUF_SIZE: usize = 16384;
 const MAX_RETRIES: u32 = 5;
 
 /// Envía un mensaje de log al host del plugin.
+/// Los logs NO sobrescriben la respuesta del plugin (usan host_log separado).
 pub fn log(msg: &str) {
-    unsafe { host_publish_response(msg.as_ptr(), msg.len() as u32) };
+    unsafe { host_log(msg.as_ptr(), msg.len() as u32) };
 }
 
 /// Realiza una petición HTTP al backend a través del host.
@@ -449,8 +452,24 @@ pub fn query_data(query_json: &str) -> Option<String> {
 }
 
 /// Almacena un valor en el key-value store del host.
+/// Versión silenciosa (compatibilidad hacia atrás).
 pub fn kv_set_val(key: &str, value: &str) {
-    unsafe { host_kv_set(key.as_ptr(), key.len() as u32, value.as_ptr(), value.len() as u32) };
+    let _ = kv_set_val_checked(key, value);
+}
+
+/// Almacena un valor en el key-value store del host.
+/// Retorna Ok(()) si fue exitoso, o Error con el motivo del fallo.
+pub fn kv_set_val_checked(key: &str, value: &str) -> Result<(), String> {
+    if key.is_empty() {
+        return Err("kv_set: key cannot be empty".to_string());
+    }
+    if value.len() > 1_048_576 {
+        return Err(format!("kv_set: value too large ({} bytes, max 1MB)", value.len()));
+    }
+    unsafe {
+        host_kv_set(key.as_ptr(), key.len() as u32, value.as_ptr(), value.len() as u32);
+    }
+    Ok(())
 }
 
 /// Lee un valor del key-value store del host.
@@ -732,7 +751,7 @@ pub mod prelude {
         badge, button, card, divider, icon, input, modal, respond, respond_error, respond_ok,
         select_widget, switch_widget, text, textarea,
     };
-    pub use super::{http_request, kv_get_val, kv_set_val, log, query_data, to_host_response};
+    pub use super::{http_request, kv_get_val, kv_set_val, kv_set_val_checked, log, query_data, to_host_response};
     pub use super::query::{self, TicketSummary, AgentSummary, DepartmentSummary};
 }
 
