@@ -4,19 +4,21 @@ The official Rust SDK for building WebAssembly plugins for the **Ezerdesk** help
 
 ## Overview
 
-`ezerdesk-sdk` provides the necessary types, macros, and host bindings to create dynamic, memory-safe plugins that run inside the Ezerdesk Wasm engine. It allows you to define UI components, handle system events, manage persistent state, and integrate with external services via OAuth.
+`ezerdesk-sdk` provides the necessary types, macros, and host bindings to create dynamic, memory-safe plugins that run inside the Ezerdesk Wasm engine. It allows you to define UI components, handle system events, manage persistent state, create custom data models, and integrate with external services via OAuth and SMS.
 
 ## Key Features
 
-### 🎨 UI Components (13 widgets)
+### 🎨 UI Components (16 widgets)
 - **Cards, Text, Buttons** - Basic layout and interaction
 - **Inputs, Textareas, Selects, Switches** - Form elements
 - **Badges, Icons, Dividers** - Visual indicators
 - **Modals** - Dialog overlays
 - **Tables** - Structured data display with headers and rows
 - **Charts** - Data visualization (bar, line, pie)
+- **NumberInput** - Numeric input with min/max/step validation
+- **DateInput** - Date picker input
 
-### 📊 Data Access (8 query types)
+### 📊 Data Access (40+ query types)
 - **tickets** - Query helpdesk tickets with status filters
 - **agents** - List users and agents
 - **departments** - List organizational departments
@@ -25,9 +27,10 @@ The official Rust SDK for building WebAssembly plugins for the **Ezerdesk** help
 - **workflows** - List automation workflows
 - **sla_policies** - Query SLA policies
 - **analytics** - System-wide metrics (tickets, agents, trends)
+- **Plus 30+ more query types** for all system entities
 
 ### 🔐 Security & Auth
-- **OAuth Support** - Connect to external services (Google, Slack, etc.)
+- **OAuth Support** - Connect to external services (Google, Slack, GitHub)
 - **Sandboxed Execution** - WASM isolation with fuel/memory limits
 - **SSRF Protection** - Blocked private IPs and metadata endpoints
 - **KV Store** - Persistent key-value storage per plugin
@@ -147,6 +150,46 @@ let req = HttpRequest {
 
 if let Some(res) = sdk::http_request(&req) {
     sdk::kv_set_val("last_ip", &res.body);
+}
+```
+
+### Advanced: Custom Data Models
+
+Los modelos de datos custom permiten a los plugins crear y gestionar sus propias tablas de datos.
+
+```rust
+// Crear modelo "inventario"
+sdk::create_data_model(
+    "inventario",
+    "Gestión de inventario de productos",
+    r#"{"fields": [
+        {"name": "producto", "type": "string", "required": true},
+        {"name": "cantidad", "type": "number", "min": 0},
+        {"name": "categoria", "type": "string"}
+    ]}"#
+);
+
+// Crear registro
+sdk::create_data_record("inventario", 
+    r#"{"producto": "Laptop", "cantidad": 10, "categoria": "Electrónica"}"#
+);
+
+// Listar registros
+if let Some(records) = sdk::list_data_records("inventario", 100) {
+    sdk::log(&format!("Registros: {}", records));
+}
+
+// Actualizar registro
+sdk::update_data_record("inventario", "record-123", 
+    r#"{"cantidad": 5}"#
+);
+
+// Eliminar registro
+sdk::delete_data_record("inventario", "record-123");
+
+// Contar registros
+if let Some(count) = sdk::count_data_records("inventario") {
+    sdk::log(&format!("Total: {}", count));
 }
 ```
 

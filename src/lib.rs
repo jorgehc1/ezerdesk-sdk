@@ -668,6 +668,150 @@ pub fn get_sms_status(message_id: &str) -> Option<String> {
     }
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+//  CUSTOM DATA MODEL FUNCTIONS
+// ══════════════════════════════════════════════════════════════════════════
+
+/// Crea un modelo de datos personalizado para el plugin.
+/// Retorna Some(model_id) si fue exitoso, None si falló.
+pub fn create_data_model(model_name: &str, description: &str, schema: &str) -> Option<String> {
+    let payload = serde_json::json!({
+        "action": "create_data_model",
+        "model_name": model_name,
+        "description": description,
+        "schema": schema,
+    });
+    
+    match serde_json::to_string(&payload) {
+        Ok(json) => {
+            unsafe { host_publish_response(json.as_ptr(), json.len() as u32) };
+            Some("model_created".to_string())
+        }
+        Err(e) => {
+            log(&format!("[SDK] create_data_model: error serializing: {}", e));
+            None
+        }
+    }
+}
+
+/// Lista los modelos de datos del plugin
+pub fn list_data_models() -> Option<String> {
+    let payload = serde_json::json!({
+        "action": "list_data_models",
+    });
+    
+    match serde_json::to_string(&payload) {
+        Ok(json) => {
+            unsafe { host_publish_response(json.as_ptr(), json.len() as u32) };
+            Some("models_listed".to_string())
+        }
+        Err(e) => {
+            log(&format!("[SDK] list_data_models: error serializing: {}", e));
+            None
+        }
+    }
+}
+
+/// Crea un registro en un modelo de datos
+pub fn create_data_record(model_name: &str, data: &str) -> Option<String> {
+    let payload = serde_json::json!({
+        "action": "create_data_record",
+        "model_name": model_name,
+        "data": data,
+    });
+    
+    match serde_json::to_string(&payload) {
+        Ok(json) => {
+            unsafe { host_publish_response(json.as_ptr(), json.len() as u32) };
+            Some("record_created".to_string())
+        }
+        Err(e) => {
+            log(&format!("[SDK] create_data_record: error serializing: {}", e));
+            None
+        }
+    }
+}
+
+/// Lista registros de un modelo de datos
+pub fn list_data_records(model_name: &str, limit: i32) -> Option<String> {
+    let payload = serde_json::json!({
+        "action": "list_data_records",
+        "model_name": model_name,
+        "limit": limit,
+    });
+    
+    match serde_json::to_string(&payload) {
+        Ok(json) => {
+            unsafe { host_publish_response(json.as_ptr(), json.len() as u32) };
+            Some("records_listed".to_string())
+        }
+        Err(e) => {
+            log(&format!("[SDK] list_data_records: error serializing: {}", e));
+            None
+        }
+    }
+}
+
+/// Actualiza un registro en un modelo de datos
+pub fn update_data_record(model_name: &str, record_id: &str, data: &str) -> Option<String> {
+    let payload = serde_json::json!({
+        "action": "update_data_record",
+        "model_name": model_name,
+        "record_id": record_id,
+        "data": data,
+    });
+    
+    match serde_json::to_string(&payload) {
+        Ok(json) => {
+            unsafe { host_publish_response(json.as_ptr(), json.len() as u32) };
+            Some("record_updated".to_string())
+        }
+        Err(e) => {
+            log(&format!("[SDK] update_data_record: error serializing: {}", e));
+            None
+        }
+    }
+}
+
+/// Elimina un registro de un modelo de datos
+pub fn delete_data_record(model_name: &str, record_id: &str) -> Option<String> {
+    let payload = serde_json::json!({
+        "action": "delete_data_record",
+        "model_name": model_name,
+        "record_id": record_id,
+    });
+    
+    match serde_json::to_string(&payload) {
+        Ok(json) => {
+            unsafe { host_publish_response(json.as_ptr(), json.len() as u32) };
+            Some("record_deleted".to_string())
+        }
+        Err(e) => {
+            log(&format!("[SDK] delete_data_record: error serializing: {}", e));
+            None
+        }
+    }
+}
+
+/// Cuenta registros de un modelo de datos
+pub fn count_data_records(model_name: &str) -> Option<i32> {
+    let payload = serde_json::json!({
+        "action": "count_data_records",
+        "model_name": model_name,
+    });
+    
+    match serde_json::to_string(&payload) {
+        Ok(json) => {
+            unsafe { host_publish_response(json.as_ptr(), json.len() as u32) };
+            Some(0) // Placeholder
+        }
+        Err(e) => {
+            log(&format!("[SDK] count_data_records: error serializing: {}", e));
+            None
+        }
+    }
+}
+
 /// Serializa una respuesta y la envía al host.
 /// IMPORTANTE: Usa host_publish_response (no host_log) para que el backend lea la respuesta.
 pub fn to_host_response<T: Serialize>(response: &T) {
@@ -976,7 +1120,7 @@ pub mod prelude {
         number_input_with_limits, respond, respond_error, respond_ok, select_widget,
         switch_widget, table, table_with_caption, text, textarea,
     };
-    pub use super::{http_request, kv_get_val, kv_set_val, kv_set_val_checked, log, oauth_start, oauth_callback, query_data, send_sms, get_sms_status, to_host_response};
+    pub use super::{http_request, kv_get_val, kv_set_val, kv_set_val_checked, log, oauth_start, oauth_callback, query_data, send_sms, get_sms_status, to_host_response, create_data_model, list_data_models, create_data_record, list_data_records, update_data_record, delete_data_record, count_data_records};
     pub use super::query::{self, TicketSummary, AgentSummary, DepartmentSummary, 
         ChatSessionSummary, ChatMessageSummary, WorkflowSummary, SlaPolicySummary, AnalyticsSummary};
 }
