@@ -102,6 +102,12 @@ pub enum UiWidget {
         #[serde(default)]
         caption: Option<String>,
     },
+    #[serde(rename = "chart")]
+    Chart {
+        title: String,
+        data: Vec<(String, f64)>,
+        chart_type: String,
+    },
 }
 
 /// Representa un ticket del sistema de helpdesk.
@@ -331,6 +337,8 @@ mod host {
         pub fn host_kv_read(k_ptr: *const u8, k_len: u32, buf_ptr: *mut u8, buf_len: u32) -> u32;
         pub fn host_http_request(req_ptr: *const u8, req_len: u32, res_ptr: *mut u8, res_len: u32) -> u32;
         pub fn host_query(req_ptr: *const u8, req_len: u32, res_ptr: *mut u8, res_len: u32) -> u32;
+        pub fn host_oauth_start(p_ptr: *const u8, p_len: u32, r_ptr: *mut u8, r_len: u32) -> u32;
+        pub fn host_oauth_callback(c_ptr: *const u8, c_len: u32, b_ptr: *mut u8, b_len: u32) -> u32;
     }
 }
 
@@ -342,6 +350,8 @@ mod host {
     pub unsafe fn host_kv_read(_k_ptr: *const u8, _k_len: u32, _buf_ptr: *mut u8, _buf_len: u32) -> u32 { 0 }
     pub unsafe fn host_http_request(_req_ptr: *const u8, _req_len: u32, _res_ptr: *mut u8, _res_len: u32) -> u32 { 0 }
     pub unsafe fn host_query(_req_ptr: *const u8, _req_len: u32, _res_ptr: *mut u8, _res_len: u32) -> u32 { 0 }
+    pub unsafe fn host_oauth_start(_p_ptr: *const u8, _p_len: u32, _r_ptr: *mut u8, _r_len: u32) -> u32 { 0 }
+    pub unsafe fn host_oauth_callback(_c_ptr: *const u8, _c_len: u32, _b_ptr: *mut u8, _b_len: u32) -> u32 { 0 }
 }
 
 use host::*;
@@ -524,6 +534,79 @@ pub fn kv_get_val(key: &str) -> Option<String> {
     None
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+//  OAUTH FUNCTIONS
+// ══════════════════════════════════════════════════════════════════════════
+
+/// Inicia un flujo OAuth con el proveedor especificado.
+/// Retorna la URL de autorización para redirigir al usuario.
+pub fn oauth_start(provider: &str) -> Option<String> {
+    let mut buf_size = INITIAL_BUF_SIZE;
+    for _ in 0..MAX_RETRIES {
+        let mut buf = vec![0u8; buf_size];
+        let written = unsafe {
+            host_oauth_start(
+                provider.as_ptr(),
+                provider.len() as u32,
+                buf.as_mut_ptr(),
+                buf.len() as u32,
+            )
+        } as usize;
+
+        if written == 0 {
+            log(&format!("[SDK] oauth_start: host returned empty response"));
+            return None;
+        }
+
+        if written > buf.len() {
+            buf_size = written;
+            continue;
+        }
+
+        return Some(String::from_utf8_lossy(&buf[..written]).into_owned());
+    }
+
+    log(&format!(
+        "[SDK] oauth_start: exceeded max retries ({})",
+        MAX_RETRIES
+    ));
+    None
+}
+
+/// Procesa el callback de OAuth y retorna el token de acceso.
+pub fn oauth_callback(callback_data: &str) -> Option<String> {
+    let mut buf_size = INITIAL_BUF_SIZE;
+    for _ in 0..MAX_RETRIES {
+        let mut buf = vec![0u8; buf_size];
+        let written = unsafe {
+            host_oauth_callback(
+                callback_data.as_ptr(),
+                callback_data.len() as u32,
+                buf.as_mut_ptr(),
+                buf.len() as u32,
+            )
+        } as usize;
+
+        if written == 0 {
+            log(&format!("[SDK] oauth_callback: host returned empty response"));
+            return None;
+        }
+
+        if written > buf.len() {
+            buf_size = written;
+            continue;
+        }
+
+        return Some(String::from_utf8_lossy(&buf[..written]).into_owned());
+    }
+
+    log(&format!(
+        "[SDK] oauth_callback: exceeded max retries ({})",
+        MAX_RETRIES
+    ));
+    None
+}
+
 /// Serializa una respuesta y la envía al host.
 /// IMPORTANTE: Usa host_publish_response (no host_log) para que el backend lea la respuesta.
 pub fn to_host_response<T: Serialize>(response: &T) {
@@ -621,6 +704,16 @@ pub fn table_with_caption(headers: Vec<&str>, rows: Vec<Vec<&str>>, caption: &st
         headers: headers.into_iter().map(|h| h.to_string()).collect(),
         rows: rows.into_iter().map(|r| r.into_iter().map(|c| c.to_string()).collect()).collect(),
         caption: Some(caption.to_string()),
+    }
+}
+
+/// Crea un widget `Chart` para visualización de datos.
+/// Tipos soportados: "bar", "line", "pie", "gauge"
+pub fn chart(title: &str, data: Vec<(&str, f64)>, chart_type: &str) -> UiWidget {
+    UiWidget::Chart {
+        title: title.to_string(),
+        data: data.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
+        chart_type: chart_type.to_string(),
     }
 }
 
@@ -777,7 +870,7 @@ pub mod prelude {
         badge, button, card, divider, icon, input, modal, respond, respond_error, respond_ok,
         select_widget, switch_widget, table, table_with_caption, text, textarea,
     };
-    pub use super::{http_request, kv_get_val, kv_set_val, kv_set_val_checked, log, query_data, to_host_response};
+    pub use super::{http_request, kv_get_val, kv_set_val, kv_set_val_checked, log, oauth_start, oauth_callback, query_data, to_host_response};
     pub use super::query::{self, TicketSummary, AgentSummary, DepartmentSummary, 
         ChatSessionSummary, ChatMessageSummary, WorkflowSummary, SlaPolicySummary, AnalyticsSummary};
 }
