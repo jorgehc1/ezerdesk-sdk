@@ -12,9 +12,8 @@
 ### ✅ 2. Construcción de JSON por Concatenación de Strings — RESUELTO
 - **Solución:** Se reemplazó por estructuras Rust serializables (`TicketQueryPayload`, `SimpleQueryPayload`, `DataWrapper<T>`) con `serde_json::to_string`. El parámetro `limit` ahora se serializa correctamente en `TicketQueryPayload`.
 
-### ✅ 3. Manejo de Errores Silenciosos — PARCIALMENTE RESUELTO
-- **Progreso:** Las funciones principales ahora llaman a `log()` antes de retornar `None`, informando el motivo del fallo.
-- **Pendiente:** `kv_set_val()` aún no retorna error feedback.
+### ✅ 3. Manejo de Errores Silenciosos — RESUELTO
+- **Solución:** `host_kv_set` ahora retorna un `u32` (0=éxito, 1=error de escritura). `kv_set_val_checked()` interpreta el código de retorno. `kv_set_val()` loguea errores silenciosamente. El backend (`wasm_engine.gleam`) retorna código de error y loguea el motivo del fallo.
 
 ### ✅ 6. Eficiencia en Deserialización — RESUELTO
 - **Solución:** Se usa `serde_json::from_slice(&buf[..written])` en vez de convertir a String intermedio.

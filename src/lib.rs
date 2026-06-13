@@ -379,7 +379,7 @@ mod host {
     unsafe extern "C" {
         pub fn host_publish_response(ptr: *const u8, len: u32);
         pub fn host_log(ptr: *const u8, len: u32);
-        pub fn host_kv_set(k_ptr: *const u8, k_len: u32, v_ptr: *const u8, v_len: u32);
+        pub fn host_kv_set(k_ptr: *const u8, k_len: u32, v_ptr: *const u8, v_len: u32) -> u32;
         pub fn host_kv_read(k_ptr: *const u8, k_len: u32, buf_ptr: *mut u8, buf_len: u32) -> u32;
         pub fn host_http_request(req_ptr: *const u8, req_len: u32, res_ptr: *mut u8, res_len: u32) -> u32;
         pub fn host_query(req_ptr: *const u8, req_len: u32, res_ptr: *mut u8, res_len: u32) -> u32;
@@ -392,7 +392,7 @@ mod host {
 mod host {
     pub unsafe fn host_publish_response(_ptr: *const u8, _len: u32) {}
     pub unsafe fn host_log(_ptr: *const u8, _len: u32) {}
-    pub unsafe fn host_kv_set(_k_ptr: *const u8, _k_len: u32, _v_ptr: *const u8, _v_len: u32) {}
+    pub unsafe fn host_kv_set(_k_ptr: *const u8, _k_len: u32, _v_ptr: *const u8, _v_len: u32) -> u32 { 0 }
     pub unsafe fn host_kv_read(_k_ptr: *const u8, _k_len: u32, _buf_ptr: *mut u8, _buf_len: u32) -> u32 { 0 }
     pub unsafe fn host_http_request(_req_ptr: *const u8, _req_len: u32, _res_ptr: *mut u8, _res_len: u32) -> u32 { 0 }
     pub unsafe fn host_query(_req_ptr: *const u8, _req_len: u32, _res_ptr: *mut u8, _res_len: u32) -> u32 { 0 }
@@ -516,8 +516,11 @@ pub fn query_data(query_json: &str) -> Option<String> {
 
 /// Almacena un valor en el key-value store del host.
 /// Versión silenciosa (compatibilidad hacia atrás).
+/// Si ocurre un error, se registra en los logs del plugin.
 pub fn kv_set_val(key: &str, value: &str) {
-    let _ = kv_set_val_checked(key, value);
+    if let Err(e) = kv_set_val_checked(key, value) {
+        log(&format!("[SDK] kv_set_val: {}", e));
+    }
 }
 
 /// Almacena un valor en el key-value store del host.
@@ -529,10 +532,15 @@ pub fn kv_set_val_checked(key: &str, value: &str) -> Result<(), String> {
     if value.len() > 1_048_576 {
         return Err(format!("kv_set: value too large ({} bytes, max 1MB)", value.len()));
     }
-    unsafe {
-        host_kv_set(key.as_ptr(), key.len() as u32, value.as_ptr(), value.len() as u32);
+    let status = unsafe {
+        host_kv_set(key.as_ptr(), key.len() as u32, value.as_ptr(), value.len() as u32)
+    };
+    match status {
+        0 => Ok(()),
+        1 => Err("kv_set: host reported write error".to_string()),
+        2 => Err("kv_set: host reported key validation error".to_string()),
+        _ => Err(format!("kv_set: unknown host error code {}", status)),
     }
-    Ok(())
 }
 
 /// Lee un valor del key-value store del host.
