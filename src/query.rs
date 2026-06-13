@@ -88,6 +88,53 @@ pub struct AnalyticsSummary {
     pub agentes_activos: i32,
 }
 
+/// Log de auditoría
+#[derive(Deserialize, Debug, Clone)]
+pub struct AuditLogSummary {
+    pub id: String,
+    pub recurso_tipo: String,
+    pub recurso_id: String,
+    pub accion: String,
+    pub creado_en: String,
+}
+
+/// Gift card
+#[derive(Deserialize, Debug, Clone)]
+pub struct GiftCardSummary {
+    pub codigo: String,
+    pub monto: i32,
+    pub estado: String,
+    pub creado_en: String,
+}
+
+/// Notificación
+#[derive(Deserialize, Debug, Clone)]
+pub struct NotificationSummary {
+    pub id: String,
+    pub titulo: String,
+    pub mensaje: String,
+    pub leido: bool,
+    pub creado_en: String,
+}
+
+/// Integración
+#[derive(Deserialize, Debug, Clone)]
+pub struct IntegrationSummary {
+    pub id: String,
+    pub provider: String,
+    pub activo: bool,
+    pub creado_en: String,
+}
+
+/// Feature flag
+#[derive(Deserialize, Debug, Clone)]
+pub struct FeatureFlagSummary {
+    pub id: String,
+    pub nombre: String,
+    pub descripcion: String,
+    pub activo: bool,
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 //  WRAPPER DE RESPUESTA DEL BACKEND
 //  ══════════════════════════════════════════════════════════════════════════
@@ -156,6 +203,31 @@ pub fn sla_policies() -> SimpleQuery<SlaPolicySummary> {
 /// Constructor para analytics del sistema
 pub fn analytics() -> AnalyticsQuery {
     AnalyticsQuery::new()
+}
+
+/// Constructor para logs de auditoría
+pub fn audit_logs() -> SimpleQuery<AuditLogSummary> {
+    SimpleQuery::new("audit_logs")
+}
+
+/// Constructor para gift cards
+pub fn gift_cards() -> SimpleQuery<GiftCardSummary> {
+    SimpleQuery::new("gift_cards")
+}
+
+/// Constructor para notificaciones
+pub fn notifications() -> SimpleQuery<NotificationSummary> {
+    SimpleQuery::new("notifications")
+}
+
+/// Constructor para integraciones
+pub fn integrations() -> SimpleQuery<IntegrationSummary> {
+    SimpleQuery::new("integrations")
+}
+
+/// Constructor para feature flags
+pub fn feature_flags() -> SimpleQuery<FeatureFlagSummary> {
+    SimpleQuery::new("feature_flags")
 }
 
 // ══════════════════════════════════════════════════════════════════════════
