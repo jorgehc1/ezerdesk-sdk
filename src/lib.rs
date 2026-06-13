@@ -56,6 +56,131 @@ pub struct PluginMetadata {
     pub author: Option<String>,
 }
 
+/// Estilos disponibles para el widget Text
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TextStyle {
+    Normal,
+    Bold,
+    Italic,
+    Heading1,
+    Heading2,
+    Heading3,
+    Caption,
+    Muted,
+}
+
+impl TextStyle {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TextStyle::Normal => "normal",
+            TextStyle::Bold => "bold",
+            TextStyle::Italic => "italic",
+            TextStyle::Heading1 => "heading1",
+            TextStyle::Heading2 => "heading2",
+            TextStyle::Heading3 => "heading3",
+            TextStyle::Caption => "caption",
+            TextStyle::Muted => "muted",
+        }
+    }
+}
+
+/// Variantes visuales para el widget Button
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ButtonVariant {
+    Primary,
+    Secondary,
+    Danger,
+    Success,
+    Warning,
+    Ghost,
+    Link,
+}
+
+impl ButtonVariant {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ButtonVariant::Primary => "primary",
+            ButtonVariant::Secondary => "secondary",
+            ButtonVariant::Danger => "danger",
+            ButtonVariant::Success => "success",
+            ButtonVariant::Warning => "warning",
+            ButtonVariant::Ghost => "ghost",
+            ButtonVariant::Link => "link",
+        }
+    }
+}
+
+/// Variantes visuales para el widget Badge
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BadgeVariant {
+    Default,
+    Success,
+    Warning,
+    Error,
+    Info,
+    Outline,
+}
+
+impl BadgeVariant {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            BadgeVariant::Default => "default",
+            BadgeVariant::Success => "success",
+            BadgeVariant::Warning => "warning",
+            BadgeVariant::Error => "error",
+            BadgeVariant::Info => "info",
+            BadgeVariant::Outline => "outline",
+        }
+    }
+}
+
+/// Tamaños disponibles para el widget Modal
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ModalSize {
+    Sm,
+    Md,
+    Lg,
+    Xl,
+    Full,
+}
+
+impl ModalSize {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ModalSize::Sm => "sm",
+            ModalSize::Md => "md",
+            ModalSize::Lg => "lg",
+            ModalSize::Xl => "xl",
+            ModalSize::Full => "full",
+        }
+    }
+}
+
+/// Tipos de gráficas disponibles para el widget Chart
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ChartType {
+    Bar,
+    Line,
+    Pie,
+    Gauge,
+}
+
+impl ChartType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ChartType::Bar => "bar",
+            ChartType::Line => "line",
+            ChartType::Pie => "pie",
+            ChartType::Gauge => "gauge",
+        }
+    }
+}
+
 /// Representa un widget de interfaz de usuario renderizable en el frontend.
 ///
 /// Cada variante se serializa con el tag `"tipo"` para que el frontend
@@ -920,9 +1045,19 @@ pub fn text(content: &str, style: &str) -> UiWidget {
     UiWidget::Text { content: content.to_string(), style: style.to_string() }
 }
 
+/// Crea un widget `Text` con estilo tipado.
+pub fn text_typed(content: &str, style: TextStyle) -> UiWidget {
+    UiWidget::Text { content: content.to_string(), style: style.as_str().to_string() }
+}
+
 /// Crea un widget `Button` con etiqueta, acción y variante visual.
 pub fn button(label: &str, action: &str, variant: &str) -> UiWidget {
     UiWidget::Button { label: label.to_string(), action: action.to_string(), variant: variant.to_string() }
+}
+
+/// Crea un widget `Button` con variante tipada.
+pub fn button_typed(label: &str, action: &str, variant: ButtonVariant) -> UiWidget {
+    UiWidget::Button { label: label.to_string(), action: action.to_string(), variant: variant.as_str().to_string() }
 }
 
 /// Crea un widget `Input` de texto.
@@ -955,6 +1090,11 @@ pub fn badge(content: &str, variant: &str) -> UiWidget {
     UiWidget::Badge { content: content.to_string(), variant: variant.to_string() }
 }
 
+/// Crea un widget `Badge` con variante tipada.
+pub fn badge_typed(content: &str, variant: BadgeVariant) -> UiWidget {
+    UiWidget::Badge { content: content.to_string(), variant: variant.as_str().to_string() }
+}
+
 /// Crea un widget `Icon` con nombre y color.
 pub fn icon(name: &str, color: &str) -> UiWidget {
     UiWidget::Icon { name: name.to_string(), color: color.to_string() }
@@ -971,6 +1111,16 @@ pub fn modal(title: &str, children: Vec<UiWidget>, size: &str, close_action: &st
         title: title.to_string(),
         children,
         size: size.to_string(),
+        close_action: close_action.to_string(),
+    }
+}
+
+/// Crea un widget `Modal` con tamaño tipado.
+pub fn modal_typed(title: &str, children: Vec<UiWidget>, size: ModalSize, close_action: &str) -> UiWidget {
+    UiWidget::Modal {
+        title: title.to_string(),
+        children,
+        size: size.as_str().to_string(),
         close_action: close_action.to_string(),
     }
 }
@@ -1000,6 +1150,15 @@ pub fn chart(title: &str, data: Vec<(&str, f64)>, chart_type: &str) -> UiWidget 
         title: title.to_string(),
         data: data.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
         chart_type: chart_type.to_string(),
+    }
+}
+
+/// Crea un widget `Chart` con tipo tipado.
+pub fn chart_typed(title: &str, data: Vec<(&str, f64)>, chart_type: ChartType) -> UiWidget {
+    UiWidget::Chart {
+        title: title.to_string(),
+        data: data.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
+        chart_type: chart_type.as_str().to_string(),
     }
 }
 

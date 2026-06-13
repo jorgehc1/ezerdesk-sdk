@@ -401,6 +401,7 @@ impl TicketQuery {
 
 pub struct SimpleQuery<T> {
     query_type: String,
+    limit: Option<u32>,
     _marker: std::marker::PhantomData<T>,
 }
 
@@ -408,6 +409,7 @@ impl<T> SimpleQuery<T> {
     pub fn new(query_type: &str) -> Self {
         Self {
             query_type: query_type.to_string(),
+            limit: None,
             _marker: std::marker::PhantomData,
         }
     }
@@ -419,7 +421,7 @@ impl<T> SimpleQuery<T> {
     {
         let payload = SimpleQueryPayload {
             query_type: self.query_type.clone(),
-            limit: None,
+            limit: self.limit,
         };
 
         let body = match serde_json::to_string(&payload) {
@@ -437,9 +439,7 @@ impl<T> SimpleQuery<T> {
 
     /// Limitar la cantidad de resultados
     pub fn limit(mut self, n: u32) -> Self {
-        self.query_type = self.query_type.clone();
-        self._marker = std::marker::PhantomData;
-        let _ = n;
+        self.limit = Some(n);
         self
     }
 }

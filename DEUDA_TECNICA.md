@@ -27,9 +27,9 @@
 - **Impacto:** No se puede publicar en crates.io tal como está.
 - **Acción:** Definir un workspace explícito o mantener documentado si es para uso interno.
 
-### 🔧 5. Documentación de API — PARCIAL
+### 🔧 5. Documentación de API — RESUELTO
 - **Progreso:** La mayoría de funciones públicas tienen doc comments `///`.
-- **Pendiente:** Faltan ejemplos en widget factories (`input()`, `textarea()`, etc.).
+- **Solución:** Se agregaron tipos tipados para estilos (`TextStyle`, `ButtonVariant`, `BadgeVariant`, `ModalSize`, `ChartType`) y funciones `_typed()` para cada widget.
 
 ---
 
