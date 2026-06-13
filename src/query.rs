@@ -174,7 +174,18 @@ struct TicketQueryPayload {
 
 #[derive(Serialize)]
 struct TicketFilters {
-    status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    priority: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    assignee: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    search: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    date_from: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    date_to: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -213,6 +224,11 @@ struct AnalyticsQueryPayload {
 pub struct TicketQuery {
     limit: Option<u32>,
     status: Option<String>,
+    priority: Option<String>,
+    assignee: Option<String>,
+    search: Option<String>,
+    date_from: Option<String>,
+    date_to: Option<String>,
 }
 
 impl Default for TicketQuery {
@@ -226,6 +242,11 @@ impl TicketQuery {
         Self {
             limit: None,
             status: None,
+            priority: None,
+            assignee: None,
+            search: None,
+            date_from: None,
+            date_to: None,
         }
     }
 
@@ -241,12 +262,51 @@ impl TicketQuery {
         self
     }
 
+    /// Filtrar por prioridad
+    pub fn by_priority(mut self, priority: &str) -> Self {
+        self.priority = Some(priority.to_string());
+        self
+    }
+
+    /// Filtrar por agente asignado
+    pub fn by_assignee(mut self, assignee_id: &str) -> Self {
+        self.assignee = Some(assignee_id.to_string());
+        self
+    }
+
+    /// Buscar en asunto y descripción
+    pub fn search(mut self, query: &str) -> Self {
+        self.search = Some(query.to_string());
+        self
+    }
+
+    /// Filtrar por fecha de creación desde
+    pub fn date_from(mut self, date: &str) -> Self {
+        self.date_from = Some(date.to_string());
+        self
+    }
+
+    /// Filtrar por fecha de creación hasta
+    pub fn date_to(mut self, date: &str) -> Self {
+        self.date_to = Some(date.to_string());
+        self
+    }
+
     /// Ejecutar la consulta y obtener resultados
     pub fn all(&self) -> Result<Vec<TicketSummary>, QueryError> {
+        let filters = TicketFilters {
+            status: self.status.clone(),
+            priority: self.priority.clone(),
+            assignee: self.assignee.clone(),
+            search: self.search.clone(),
+            date_from: self.date_from.clone(),
+            date_to: self.date_to.clone(),
+        };
+
         let payload = TicketQueryPayload {
             query_type: "tickets",
             limit: self.limit,
-            filters: self.status.as_ref().map(|s| TicketFilters { status: s.clone() }),
+            filters: Some(filters),
         };
 
         let body = match serde_json::to_string(&payload) {
