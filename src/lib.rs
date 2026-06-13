@@ -125,6 +125,35 @@ pub enum UiWidget {
         placeholder: String,
         value: String,
     },
+    #[serde(rename = "calendar")]
+    Calendar {
+        label: String,
+        name: String,
+        selected_date: String,
+        events: Vec<CalendarEvent>,
+    },
+    #[serde(rename = "file_upload")]
+    FileUpload {
+        label: String,
+        name: String,
+        accept: String,
+        max_size: Option<i32>,
+    },
+    #[serde(rename = "rich_text")]
+    RichText {
+        label: String,
+        name: String,
+        value: String,
+        placeholder: String,
+    },
+}
+
+/// Evento del calendario
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CalendarEvent {
+    pub date: String,
+    pub title: String,
+    pub color: String,
 }
 
 /// Representa un ticket del sistema de helpdesk.
@@ -1010,6 +1039,55 @@ pub fn date_input(label: &str, name: &str, placeholder: &str, value: &str) -> Ui
     }
 }
 
+/// Crea un widget `Calendar` con fecha seleccionada y eventos.
+pub fn calendar(label: &str, name: &str, selected_date: &str, events: Vec<CalendarEvent>) -> UiWidget {
+    UiWidget::Calendar {
+        label: label.to_string(),
+        name: name.to_string(),
+        selected_date: selected_date.to_string(),
+        events,
+    }
+}
+
+/// Crea un evento de calendario.
+pub fn calendar_event(date: &str, title: &str, color: &str) -> CalendarEvent {
+    CalendarEvent {
+        date: date.to_string(),
+        title: title.to_string(),
+        color: color.to_string(),
+    }
+}
+
+/// Crea un widget `FileUpload` para subir archivos.
+pub fn file_upload(label: &str, name: &str, accept: &str) -> UiWidget {
+    UiWidget::FileUpload {
+        label: label.to_string(),
+        name: name.to_string(),
+        accept: accept.to_string(),
+        max_size: None,
+    }
+}
+
+/// Crea un widget `FileUpload` con tamaño máximo.
+pub fn file_upload_with_size(label: &str, name: &str, accept: &str, max_size: i32) -> UiWidget {
+    UiWidget::FileUpload {
+        label: label.to_string(),
+        name: name.to_string(),
+        accept: accept.to_string(),
+        max_size: Some(max_size),
+    }
+}
+
+/// Crea un widget `RichText` para editor de texto enriquecido.
+pub fn rich_text(label: &str, name: &str, value: &str, placeholder: &str) -> UiWidget {
+    UiWidget::RichText {
+        label: label.to_string(),
+        name: name.to_string(),
+        value: value.to_string(),
+        placeholder: placeholder.to_string(),
+    }
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 //  NAVITEM BUILDER
 //  ══════════════════════════════════════════════════════════════════════════
@@ -1160,9 +1238,10 @@ pub mod prelude {
         ActionResponse, NavItem, PluginEvent, PluginMetadata, PluginResponse, UiWidget,
     };
     pub use super::{
-        badge, button, card, chart, date_input, divider, icon, input, modal, number_input,
-        number_input_with_limits, respond, respond_error, respond_ok, select_widget,
-        switch_widget, table, table_with_caption, text, textarea,
+        badge, button, calendar, calendar_event, card, chart, date_input, divider, file_upload,
+        file_upload_with_size, icon, input, modal, number_input, number_input_with_limits,
+        respond, respond_error, respond_ok, rich_text, select_widget, switch_widget, table,
+        table_with_caption, text, textarea,
     };
     pub use super::{http_request, kv_get_val, kv_set_val, kv_set_val_checked, log, oauth_start, oauth_callback, query_data, send_sms, get_sms_status, make_call, get_call_status, to_host_response, create_data_model, list_data_models, create_data_record, list_data_records, update_data_record, delete_data_record, count_data_records};
     pub use super::query::{self, TicketSummary, AgentSummary, DepartmentSummary, 
