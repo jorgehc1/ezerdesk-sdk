@@ -649,6 +649,50 @@ pub fn send_sms(to: &str, body: &str) -> Option<String> {
     }
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+//  PHONE/CALL FUNCTIONS
+// ══════════════════════════════════════════════════════════════════════════
+
+/// Realiza una llamada telefónica a través del host.
+/// Retorna Some(call_sid) si fue exitoso, None si falló.
+pub fn make_call(to: &str, url: &str) -> Option<String> {
+    let payload = serde_json::json!({
+        "action": "make_call",
+        "to": to,
+        "url": url,
+    });
+    
+    match serde_json::to_string(&payload) {
+        Ok(json) => {
+            unsafe { host_publish_response(json.as_ptr(), json.len() as u32) };
+            Some("call_initiated".to_string())
+        }
+        Err(e) => {
+            log(&format!("[SDK] make_call: error serializing: {}", e));
+            None
+        }
+    }
+}
+
+/// Obtiene el estado de una llamada
+pub fn get_call_status(call_sid: &str) -> Option<String> {
+    let payload = serde_json::json!({
+        "action": "get_call_status",
+        "call_sid": call_sid,
+    });
+    
+    match serde_json::to_string(&payload) {
+        Ok(json) => {
+            unsafe { host_publish_response(json.as_ptr(), json.len() as u32) };
+            Some("status_unknown".to_string())
+        }
+        Err(e) => {
+            log(&format!("[SDK] get_call_status: error serializing: {}", e));
+            None
+        }
+    }
+}
+
 /// Obtiene el estado de un SMS enviado
 pub fn get_sms_status(message_id: &str) -> Option<String> {
     let payload = serde_json::json!({
@@ -1120,7 +1164,7 @@ pub mod prelude {
         number_input_with_limits, respond, respond_error, respond_ok, select_widget,
         switch_widget, table, table_with_caption, text, textarea,
     };
-    pub use super::{http_request, kv_get_val, kv_set_val, kv_set_val_checked, log, oauth_start, oauth_callback, query_data, send_sms, get_sms_status, to_host_response, create_data_model, list_data_models, create_data_record, list_data_records, update_data_record, delete_data_record, count_data_records};
+    pub use super::{http_request, kv_get_val, kv_set_val, kv_set_val_checked, log, oauth_start, oauth_callback, query_data, send_sms, get_sms_status, make_call, get_call_status, to_host_response, create_data_model, list_data_models, create_data_record, list_data_records, update_data_record, delete_data_record, count_data_records};
     pub use super::query::{self, TicketSummary, AgentSummary, DepartmentSummary, 
         ChatSessionSummary, ChatMessageSummary, WorkflowSummary, SlaPolicySummary, AnalyticsSummary};
 }
