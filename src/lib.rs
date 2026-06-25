@@ -471,6 +471,11 @@ pub enum PluginEvent {
         data: serde_json::Value,
     },
 
+    #[serde(rename = "bridge.webhook")]
+    BridgeWebhook {
+        payload: String,
+    },
+
     #[serde(other)]
     Other,
 }
