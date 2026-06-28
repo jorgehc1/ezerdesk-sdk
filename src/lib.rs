@@ -476,6 +476,13 @@ pub enum PluginEvent {
         payload: String,
     },
 
+    #[serde(rename = "snmp.trap.received")]
+    SnmpTrapReceived {
+        id_organizacion: String,
+        agent_ip: String,
+        payload: String,
+    },
+
     #[serde(other)]
     Other,
 }
@@ -821,6 +828,14 @@ pub fn snmp_walk(host: &str, port: u16, community: &str, oid: &str) -> Result<Ve
         },
         None => Err("SNMP host call failed".into()),
     }
+}
+
+/// Retorna el timestamp Unix actual en segundos.
+pub fn now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
 }
 
 /// Almacena un valor en el key-value store del host.
