@@ -483,6 +483,14 @@ pub enum PluginEvent {
         payload: String,
     },
 
+    #[serde(rename = "sms.inbound")]
+    SmsInbound {
+        id_organizacion: String,
+        from: String,
+        to: String,
+        body: String,
+    },
+
     #[serde(other)]
     Other,
 }
