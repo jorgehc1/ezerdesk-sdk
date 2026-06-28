@@ -502,6 +502,66 @@ pub struct HttpResponse {
     pub body: String,
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+//  SNMP TYPES
+// ══════════════════════════════════════════════════════════════════════════
+
+/// Petición SNMP a enviar al host.
+#[derive(Serialize, Debug)]
+pub struct SnmpRequest {
+    /// Acción a realizar: "get", "set", or "walk".
+    pub action: &'static str,
+    /// Host o IP del agente SNMP.
+    pub host: String,
+    /// Puerto SNMP (default: 161).
+    #[serde(default = "default_snmp_port")]
+    pub port: u16,
+    /// Comunidad SNMP (default: "public").
+    #[serde(default = "default_snmp_community")]
+    pub community: String,
+    /// OID a consultar o modificar.
+    pub oid: String,
+    /// Valor para operaciones SET.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+}
+
+#[allow(dead_code)]
+fn default_snmp_port() -> u16 { 161 }
+#[allow(dead_code)]
+fn default_snmp_community() -> String { "public".into() }
+
+/// Respuesta SNMP del host para operaciones get/set.
+#[derive(Deserialize, Debug)]
+pub struct SnmpResponse {
+    pub success: bool,
+    #[serde(default)]
+    pub oid: String,
+    #[serde(default)]
+    pub value: String,
+    #[serde(default)]
+    pub error: String,
+}
+
+/// Respuesta SNMP del host para operaciones walk.
+#[derive(Deserialize, Debug)]
+pub struct SnmpWalkResponse {
+    pub success: bool,
+    #[serde(default)]
+    pub values: Vec<SnmpWalkEntry>,
+    #[serde(default)]
+    pub count: u32,
+    #[serde(default)]
+    pub error: String,
+}
+
+/// Una entrada individual del walk.
+#[derive(Deserialize, Debug)]
+pub struct SnmpWalkEntry {
+    pub oid: String,
+    pub value: String,
+}
+
 // Host Imports — solo activos en WASM; stubs para poder compilar tests nativos
 #[cfg(target_arch = "wasm32")]
 mod host {
@@ -515,6 +575,7 @@ mod host {
         pub fn host_query(req_ptr: *const u8, req_len: u32, res_ptr: *mut u8, res_len: u32) -> u32;
         pub fn host_oauth_start(p_ptr: *const u8, p_len: u32, r_ptr: *mut u8, r_len: u32) -> u32;
         pub fn host_oauth_callback(c_ptr: *const u8, c_len: u32, b_ptr: *mut u8, b_len: u32) -> u32;
+        pub fn host_snmp(req_ptr: *const u8, req_len: u32, res_ptr: *mut u8, res_len: u32) -> u32;
     }
 }
 
@@ -528,6 +589,7 @@ mod host {
     pub unsafe fn host_query(_req_ptr: *const u8, _req_len: u32, _res_ptr: *mut u8, _res_len: u32) -> u32 { 0 }
     pub unsafe fn host_oauth_start(_p_ptr: *const u8, _p_len: u32, _r_ptr: *mut u8, _r_len: u32) -> u32 { 0 }
     pub unsafe fn host_oauth_callback(_c_ptr: *const u8, _c_len: u32, _b_ptr: *mut u8, _b_len: u32) -> u32 { 0 }
+    pub unsafe fn host_snmp(_req_ptr: *const u8, _req_len: u32, _res_ptr: *mut u8, _res_len: u32) -> u32 { 0 }
 }
 
 use host::*;
@@ -642,6 +704,123 @@ pub fn query_data(query_json: &str) -> Option<String> {
         MAX_RETRIES
     ));
     None
+}
+
+/// Ejecuta una operación SNMP (get/set/walk) contra un agente SNMP.
+///
+/// Usa un buffer dinámico con reintento automático si la respuesta no cabe.
+/// # Ejemplo
+/// ```ignore
+/// let resp = snmp(&SnmpRequest {
+///     action: "get",
+///     host: "192.168.1.1".into(),
+///     port: 161,
+///     community: "public".into(),
+///     oid: "1.3.6.1.2.1.1.1.0".into(),
+///     value: None,
+/// });
+/// ```
+pub fn snmp(req: &SnmpRequest) -> Option<String> {
+    let json = match serde_json::to_string(req) {
+        Ok(j) => j,
+        Err(e) => {
+            log(&format!("[SDK] snmp: failed to serialize request: {}", e));
+            return None;
+        }
+    };
+
+    let mut buf_size = INITIAL_BUF_SIZE;
+    for _ in 0..MAX_RETRIES {
+        let mut buf = vec![0u8; buf_size];
+        let written = unsafe {
+            host_snmp(
+                json.as_ptr(),
+                json.len() as u32,
+                buf.as_mut_ptr(),
+                buf.len() as u32,
+            )
+        } as usize;
+
+        if written == 0 {
+            log("[SDK] snmp: host returned empty response");
+            return None;
+        }
+
+        if written > buf.len() {
+            buf_size = written;
+            continue;
+        }
+
+        return Some(
+            String::from_utf8_lossy(&buf[..written]).into_owned()
+        );
+    }
+
+    log(&format!(
+        "[SDK] snmp: exceeded max retries ({}) for buffer allocation",
+        MAX_RETRIES
+    ));
+    None
+}
+
+/// Realiza una operación SNMP GET.
+pub fn snmp_get(host: &str, port: u16, community: &str, oid: &str) -> Result<SnmpResponse, String> {
+    let req = SnmpRequest {
+        action: "get",
+        host: host.into(),
+        port,
+        community: community.into(),
+        oid: oid.into(),
+        value: None,
+    };
+    match snmp(&req) {
+        Some(json) => match serde_json::from_str::<SnmpResponse>(&json) {
+            Ok(resp) if resp.success => Ok(resp),
+            Ok(resp) => Err(resp.error),
+            Err(e) => Err(format!("Failed to parse SNMP response: {}", e)),
+        },
+        None => Err("SNMP host call failed".into()),
+    }
+}
+
+/// Realiza una operación SNMP SET.
+pub fn snmp_set(host: &str, port: u16, community: &str, oid: &str, value: &str) -> Result<SnmpResponse, String> {
+    let req = SnmpRequest {
+        action: "set",
+        host: host.into(),
+        port,
+        community: community.into(),
+        oid: oid.into(),
+        value: Some(value.into()),
+    };
+    match snmp(&req) {
+        Some(json) => match serde_json::from_str::<SnmpResponse>(&json) {
+            Ok(resp) if resp.success => Ok(resp),
+            Ok(resp) => Err(resp.error),
+            Err(e) => Err(format!("Failed to parse SNMP response: {}", e)),
+        },
+        None => Err("SNMP host call failed".into()),
+    }
+}
+
+/// Realiza un walk SNMP sobre un OID raíz.
+pub fn snmp_walk(host: &str, port: u16, community: &str, oid: &str) -> Result<Vec<SnmpWalkEntry>, String> {
+    let req = SnmpRequest {
+        action: "walk",
+        host: host.into(),
+        port,
+        community: community.into(),
+        oid: oid.into(),
+        value: None,
+    };
+    match snmp(&req) {
+        Some(json) => match serde_json::from_str::<SnmpWalkResponse>(&json) {
+            Ok(resp) if resp.success => Ok(resp.values),
+            Ok(resp) => Err(resp.error),
+            Err(e) => Err(format!("Failed to parse SNMP walk response: {}", e)),
+        },
+        None => Err("SNMP host call failed".into()),
+    }
 }
 
 /// Almacena un valor en el key-value store del host.

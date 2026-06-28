@@ -145,20 +145,38 @@ struct DataWrapper<T> {
 }
 
 fn parse_response<T: for<'a> Deserialize<'a>>(json: &str) -> Result<Vec<T>, QueryError> {
-    // Intentar con wrapper { data: [...] }
     match serde_json::from_str::<DataWrapper<T>>(json) {
         Ok(w) => Ok(w.data),
-        Err(_) => {
-            // Intentar array directo
-            match serde_json::from_str::<Vec<T>>(json) {
-                Ok(v) => Ok(v),
-                Err(e) => Err(QueryError::Parse(format!(
-                    "Error decodificando respuesta: {}",
-                    e
-                ))),
-            }
-        }
+        Err(_) => match serde_json::from_str::<Vec<T>>(json) {
+            Ok(v) => Ok(v),
+            Err(e) => Err(QueryError::Parse(format!(
+                "Error decodificando respuesta: {}",
+                e
+            ))),
+        },
     }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  SNMP DEVICES QUERY
+// ══════════════════════════════════════════════════════════════════════════
+
+/// Dispositivo SNMP resumido para listados (viene de data querying).
+#[derive(Deserialize, Debug, Clone)]
+pub struct SnmpDeviceSummary {
+    pub id: String,
+    pub nombre: String,
+    pub host: String,
+    pub puerto: u16,
+    pub comunidad: String,
+    pub version: String,
+    pub activo: bool,
+    pub ultimo_ok_en: String,
+}
+
+/// Constructor para consultas de dispositivos SNMP
+pub fn snmp_devices() -> SimpleQuery<SnmpDeviceSummary> {
+    SimpleQuery::new("snmp_devices")
 }
 
 // ══════════════════════════════════════════════════════════════════════════
